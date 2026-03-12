@@ -8,16 +8,48 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-# 작업 디렉토리를 프로젝트 루트로 변경
-os.chdir(project_root)
+# Vercel 환경 변수 설정
+os.environ.setdefault('VERCEL', '1')
 
-from app import app
+# 앱 import 전에 환경 변수 로드
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except:
+    pass  # dotenv가 없어도 계속 진행
 
-# Vercel은 WSGI 앱을 직접 export하면 자동으로 처리합니다
-# handler 함수는 선택사항이지만, 명시적으로 제공할 수도 있습니다
-def handler(request):
-    """Vercel serverless function handler"""
-    return app(request.environ, request.start_response)
+# 앱 import 및 초기화
+try:
+    from app import app
+    
+    # Vercel 환경에서 데이터베이스 초기화 (한 번만 실행)
+    if not hasattr(app, '_vercel_initialized'):
+        try:
+            from app import init_db
+            init_db()
+            # 엑셀 파일이 있으면 로드 시도 (없어도 계속 진행)
+            try:
+                from app import load_excel_data
+                load_excel_data()
+            except Exception as e:
+                # 엑셀 파일이 없어도 계속 진행
+                pass
+            app._vercel_initialized = True
+        except Exception as e:
+            # 초기화 실패해도 앱은 계속 실행
+            app._vercel_initialized = True
+    
+except Exception as e:
+    # 오류 발생 시 간단한 오류 응답 앱 생성
+    from flask import Flask
+    app = Flask(__name__)
+    
+    @app.route('/<path:path>')
+    @app.route('/')
+    def error_handler(path=''):
+        import traceback
+        error_msg = str(e)
+        traceback_msg = traceback.format_exc()
+        return f"Application initialization error: {error_msg}<br><pre>{traceback_msg}</pre>", 500
 
-# Vercel이 인식하는 변수명
-# app 변수를 직접 export하면 Vercel이 자동으로 WSGI 앱으로 인식합니다
+# Vercel은 app 변수를 직접 export하면 자동으로 WSGI 앱으로 인식합니다

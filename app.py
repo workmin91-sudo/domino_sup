@@ -886,12 +886,8 @@ def download_excel():
     
     return send_file(filepath, as_attachment=True, download_name=filename)
 
-# Vercel 배포를 위한 초기화
-if os.getenv('VERCEL') or os.path.exists('.vercel'):
-    # Vercel 환경에서는 자동 초기화
-    init_db()
-    load_excel_data()
-    os.makedirs('uploads', exist_ok=True)
+# Vercel 배포를 위한 초기화는 api/index.py에서 처리
+# 여기서는 로컬 실행 시에만 초기화
 
 if __name__ == '__main__':
     init_db()

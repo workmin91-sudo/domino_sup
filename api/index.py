@@ -13,10 +13,11 @@ os.chdir(project_root)
 
 from app import app
 
-# Vercel serverless function handler
+# Vercel은 WSGI 앱을 직접 export하면 자동으로 처리합니다
+# handler 함수는 선택사항이지만, 명시적으로 제공할 수도 있습니다
 def handler(request):
     """Vercel serverless function handler"""
     return app(request.environ, request.start_response)
 
-# WSGI 호환을 위한 export
-__all__ = ['handler', 'app']
+# Vercel이 인식하는 변수명
+# app 변수를 직접 export하면 Vercel이 자동으로 WSGI 앱으로 인식합니다

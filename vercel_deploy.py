@@ -6,6 +6,12 @@ import requests
 import json
 import os
 import sys
+import io
+
+# Windows 인코딩 문제 해결
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Vercel API 엔드포인트
 VERCEL_API_BASE = "https://api.vercel.com"
@@ -104,15 +110,88 @@ def deploy_to_vercel(api_token=None):
                 else:
                     print(f"  ⚠️  {key} 설정 실패: {env_response.text}")
         
-        # 3. 배포 트리거
+        # 3. GitHub에서 최신 커밋 정보 가져오기
+        print("\n📥 GitHub 최신 커밋 정보 가져오기...")
+        github_api_url = "https://api.github.com/repos/workmin91-sudo/domino_sup/commits/main"
+        github_response = requests.get(github_api_url)
+        
+        if github_response.status_code == 200:
+            commit_info = github_response.json()
+            commit_sha = commit_info.get('sha', '')
+            print(f"  ✅ 최신 커밋: {commit_sha[:7]}")
+        else:
+            commit_sha = None
+            print(f"  ⚠️  커밋 정보 가져오기 실패, 기본값 사용")
+        
+        # 4. 프로젝트 상세 정보 가져오기 (repoId 확인)
+        print("\n📋 프로젝트 상세 정보 확인 중...")
+        project_detail_url = f"{VERCEL_API_BASE}/v9/projects/{project_name}"
+        project_detail_response = requests.get(project_detail_url, headers=headers)
+        
+        repo_id = None
+        if project_detail_response.status_code == 200:
+            project_detail = project_detail_response.json()
+            link = project_detail.get('link', {})
+            if link:
+                repo_id = link.get('repoId')
+                if repo_id:
+                    print(f"  ✅ repoId 확인: {repo_id}")
+        
+        # 5. 배포 트리거
         print("\n🚀 배포 시작...")
         deploy_url = f"{VERCEL_API_BASE}/v13/deployments"
-        deploy_data = {
-            "name": project_name,
-            "project": project_name,
-            "target": "production"
-        }
         
+        if repo_id:
+            # repoId가 있으면 gitSource 사용
+            deploy_data = {
+                "name": project_name,
+                "project": project_name,
+                "target": "production",
+                "gitSource": {
+                    "type": "github",
+                    "repoId": repo_id,
+                    "ref": "main"
+                }
+            }
+            if commit_sha:
+                deploy_data["gitSource"]["sha"] = commit_sha
+        else:
+            # repoId가 없으면 프로젝트 이름만 사용 (Vercel이 자동으로 GitHub 연결 확인)
+            deploy_data = {
+                "name": project_name,
+                "project": project_name,
+                "target": "production"
+            }
+        
+        # GitHub에 푸시했으므로 Vercel이 자동 배포를 시작했을 수 있습니다
+        # 먼저 최신 배포 목록 확인
+        print("\n📋 최신 배포 확인 중...")
+        deployments_url = f"{VERCEL_API_BASE}/v6/deployments"
+        deployments_params = {
+            "projectId": project_name,
+            "limit": 1
+        }
+        deployments_response = requests.get(deployments_url, headers=headers, params=deployments_params)
+        
+        if deployments_response.status_code == 200:
+            deployments = deployments_response.json().get('deployments', [])
+            if deployments:
+                latest_deployment = deployments[0]
+                deployment_url = latest_deployment.get('url', '')
+                deployment_state = latest_deployment.get('readyState', '')
+                print(f"  ✅ 최신 배포 발견: {deployment_url} (상태: {deployment_state})")
+                
+                if deployment_state == 'READY':
+                    print(f"\n🎉 배포 완료!")
+                    print(f"🌐 배포 URL: https://{deployment_url}")
+                    return True, deployment_url
+                elif deployment_state in ['BUILDING', 'QUEUED', 'INITIALIZING']:
+                    print(f"\n⏳ 배포 진행 중... (상태: {deployment_state})")
+                    print(f"🌐 배포 URL: https://{deployment_url}")
+                    print(f"\n💡 배포가 완료되면 위 URL로 접속하세요.")
+                    return True, deployment_url
+        
+        # 자동 배포가 없으면 수동 배포 시도
         deploy_response = requests.post(deploy_url, headers=headers, json=deploy_data)
         
         if deploy_response.status_code in [200, 201]:
@@ -146,6 +225,30 @@ def deploy_to_vercel(api_token=None):
                         return True, final_url
                     elif state == 'ERROR':
                         print(f"\n❌ 배포 실패")
+                        # 오류 로그 확인
+                        # 배포 빌드 로그 확인
+                        build_logs_url = f"{VERCEL_API_BASE}/v1/deployments/{deployment_id}/events"
+                        build_logs_response = requests.get(build_logs_url, headers=headers)
+                        if build_logs_response.status_code == 200:
+                            logs = build_logs_response.json()
+                            print(f"\n📋 오류 로그:")
+                            if isinstance(logs, list):
+                                for log in logs[-10:]:  # 최근 10개 로그
+                                    if isinstance(log, dict):
+                                        payload = log.get('payload', {})
+                                        if isinstance(payload, dict):
+                                            text = payload.get('text', '')
+                                            if 'error' in text.lower() or 'failed' in text.lower():
+                                                print(f"  ❌ {text}")
+                                        elif isinstance(payload, str):
+                                            if 'error' in payload.lower() or 'failed' in payload.lower():
+                                                print(f"  ❌ {payload}")
+                            elif isinstance(logs, dict):
+                                for log in logs.get('logs', [])[-10:]:
+                                    if isinstance(log, dict):
+                                        text = log.get('text', log.get('message', ''))
+                                        if 'error' in text.lower() or 'failed' in text.lower():
+                                            print(f"  ❌ {text}")
                         return False, None
                     else:
                         print(f"  ⏳ 배포 진행 중... ({state})")

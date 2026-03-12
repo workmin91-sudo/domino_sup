@@ -10,11 +10,13 @@ import sys
 # Vercel API 엔드포인트
 VERCEL_API_BASE = "https://api.vercel.com"
 
-def deploy_to_vercel():
+def deploy_to_vercel(api_token=None):
     """Vercel에 프로젝트 배포"""
     
     # Vercel API 토큰 확인
-    api_token = os.getenv('VERCEL_TOKEN')
+    if not api_token:
+        api_token = os.getenv('VERCEL_TOKEN')
+    
     if not api_token:
         print("=" * 60)
         print("⚠️  Vercel API 토큰이 필요합니다!")
@@ -24,11 +26,11 @@ def deploy_to_vercel():
         print("2. 'Create Token' 클릭")
         print("3. 토큰 이름 입력 (예: deploy-token)")
         print("4. 생성된 토큰 복사")
-        print("\n토큰을 환경 변수로 설정하거나 스크립트에 직접 입력하세요.")
-        print("\n또는 웹 대시보드에서 수동으로 배포하세요:")
-        print("  https://vercel.com/new")
-        print("\n상세 가이드: VERCEL_DEPLOY_INSTRUCTIONS.md 파일 참고")
-        return False
+        print("\n토큰을 제공해주시면 자동 배포를 진행하겠습니다.")
+        print("\n또는 환경 변수로 설정:")
+        print("  set VERCEL_TOKEN=your_token_here  (Windows)")
+        print("  export VERCEL_TOKEN=your_token_here  (Linux/Mac)")
+        return False, None
     
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -116,29 +118,88 @@ def deploy_to_vercel():
         if deploy_response.status_code in [200, 201]:
             deployment = deploy_response.json()
             deployment_url = deployment.get('url', '')
-            print(f"\n✅ 배포 성공!")
+            deployment_id = deployment.get('id', '')
+            
+            # 배포 상태 확인
+            print(f"\n✅ 배포 시작 성공!")
+            print(f"📦 배포 ID: {deployment_id}")
             print(f"🌐 배포 URL: https://{deployment_url}")
+            print(f"\n⏳ 배포 진행 중... (약 1-2분 소요)")
+            
+            # 배포 완료 대기
+            import time
+            check_url = f"{VERCEL_API_BASE}/v13/deployments/{deployment_id}"
+            max_wait = 120  # 최대 2분 대기
+            waited = 0
+            
+            while waited < max_wait:
+                time.sleep(5)
+                waited += 5
+                status_response = requests.get(check_url, headers=headers)
+                if status_response.status_code == 200:
+                    status_data = status_response.json()
+                    state = status_data.get('readyState', '')
+                    if state == 'READY':
+                        print(f"\n🎉 배포 완료!")
+                        final_url = status_data.get('url', deployment_url)
+                        print(f"🌐 최종 URL: https://{final_url}")
+                        return True, final_url
+                    elif state == 'ERROR':
+                        print(f"\n❌ 배포 실패")
+                        return False, None
+                    else:
+                        print(f"  ⏳ 배포 진행 중... ({state})")
+            
+            print(f"\n⚠️  배포가 완료되지 않았습니다. Vercel 대시보드에서 확인하세요.")
+            print(f"🌐 예상 URL: https://{deployment_url}")
             return True, deployment_url
         else:
             print(f"❌ 배포 실패: {deploy_response.text}")
             print("\n💡 대안: Vercel이 GitHub 저장소 변경을 감지하여 자동 배포합니다.")
             print("   GitHub에 푸시하면 자동으로 배포가 시작됩니다.")
-            return False
+            return False, None
     
     except Exception as e:
         print(f"❌ 오류 발생: {str(e)}")
         return False
 
 if __name__ == '__main__':
+    import sys
+    
     print("\n" + "=" * 60)
     print("Vercel 자동 배포 스크립트")
     print("=" * 60)
-    print("\n⚠️  이 스크립트는 Vercel API 토큰이 필요합니다.")
-    print("   API 토큰 없이는 웹 대시보드에서 수동 배포가 필요합니다.\n")
     
-    result = deploy_to_vercel()
+    # 명령줄 인자로 토큰 전달 가능
+    api_token = None
+    if len(sys.argv) > 1:
+        api_token = sys.argv[1]
+        print(f"\n✅ API 토큰을 명령줄 인자로 받았습니다.")
+    else:
+        print("\n⚠️  API 토큰이 필요합니다.")
+        print("   사용법: python vercel_deploy.py YOUR_TOKEN")
+        print("   또는 환경 변수: set VERCEL_TOKEN=YOUR_TOKEN")
+        print("\n토큰 발급: https://vercel.com/account/tokens")
     
-    if not result:
+    if api_token or os.getenv('VERCEL_TOKEN'):
+        print("\n🚀 자동 배포 시작...\n")
+        success, url = deploy_to_vercel(api_token)
+        
+        if success and url:
+            print("\n" + "=" * 60)
+            print("✅ 배포 완료!")
+            print("=" * 60)
+            print(f"\n🌐 배포 URL: https://{url}")
+            print(f"\n📝 다음 단계:")
+            print(f"1. https://{url} 접속")
+            print(f"2. 비밀번호 '1111'로 로그인")
+            print(f"3. 재고 관리 시스템 사용 시작!")
+        else:
+            print("\n" + "=" * 60)
+            print("❌ 배포 실패")
+            print("=" * 60)
+            print("\n수동 배포 가이드: QUICK_DEPLOY.md 파일 참고")
+    else:
         print("\n" + "=" * 60)
         print("📋 수동 배포 가이드")
         print("=" * 60)

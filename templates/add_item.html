@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}재고 추가 - 재고 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-plus-circle"></i> 재고 항목 추가</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/add">
+                    <div class="mb-3">
+                        <label for="item_name" class="form-label">품목명 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="item_name" name="item_name" required>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="current_stock" class="form-label">현재 재고 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="current_stock" name="current_stock" min="0" required>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label for="min_stock" class="form-label">최소 재고 기준 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="min_stock" name="min_stock" min="0" required>
+                            <small class="form-text text-muted">이 수량 이하로 떨어지면 자동 발주됩니다.</small>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label for="reorder_quantity" class="form-label">발수 주량</label>
+                            <input type="number" class="form-control" id="reorder_quantity" name="reorder_quantity" min="0" value="0">
+                            <small class="form-text text-muted">재고 부족 시 자동 발주되는 수량 (0이면 자동 계산)</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="unit" class="form-label">단위</label>
+                        <input type="text" class="form-control" id="unit" name="unit" value="개" placeholder="예: 개, 박스, kg">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="supplier_name" class="form-label">공급업체명</label>
+                        <input type="text" class="form-control" id="supplier_name" name="supplier_name" placeholder="공급업체 이름">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="supplier_email" class="form-label">공급업체 이메일</label>
+                        <input type="email" class="form-control" id="supplier_email" name="supplier_email" placeholder="supplier@example.com">
+                        <small class="form-text text-muted">재고 부족 시 발주서가 이 이메일로 전송됩니다.</small>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="/" class="btn btn-secondary">취소</a>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,522 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- 엑셀 파일 가져오기 버튼 -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> 엑셀 파일(sup/domino_inventory_training.xlsx)의 기본 정보는 앱 시작 시 자동으로 로드됩니다.
+            <button type="button" class="btn btn-sm btn-success ms-2" onclick="importFromExcel()">
+                <i class="bi bi-arrow-clockwise"></i> 수동으로 다시 가져오기
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 빠른 재고 추가 폼 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> 빠른 재고 추가</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/add" id="quickAddForm" onsubmit="return handleQuickAdd(event)">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label for="quick_item_name" class="form-label">품목명 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="quick_item_name" name="item_name" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="quick_current_stock" class="form-label">현재 재고 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="quick_current_stock" name="current_stock" min="0" value="0" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="quick_min_stock" class="form-label">최소 재고 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="quick_min_stock" name="min_stock" min="0" value="10" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="quick_reorder_quantity" class="form-label">발수 주량</label>
+                            <input type="number" class="form-control" id="quick_reorder_quantity" name="reorder_quantity" min="0" value="0">
+                        </div>
+                        <div class="col-md-1">
+                            <label for="quick_unit" class="form-label">단위</label>
+                            <input type="text" class="form-control" id="quick_unit" name="unit" value="개">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-plus-circle"></i> 추가
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label for="quick_supplier_name" class="form-label">공급업체명</label>
+                            <input type="text" class="form-control" id="quick_supplier_name" name="supplier_name" placeholder="선택사항">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="quick_supplier_email" class="form-label">공급업체 이메일</label>
+                            <input type="email" class="form-control" id="quick_supplier_email" name="supplier_email" placeholder="선택사항">
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-list-ul"></i> 재고 현황</h4>
+            </div>
+            <div class="card-body">
+                {% if low_stock_items %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    <strong>주의:</strong> {{ low_stock_items|length }}개의 품목이 재고 부족 상태입니다.
+                </div>
+                {% endif %}
+
+                {% if items %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>재료명</th>
+                                <th>규격</th>
+                                <th>단위</th>
+                                <th>안전재고</th>
+                                <th>현재재고</th>
+                                <th>부족수량</th>
+                                <th>발주권장수량</th>
+                                <th>상태</th>
+                                <th>재고 수정</th>
+                                <th>발주</th>
+                                <th>이메일 발송</th>
+                                <th>삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td><strong>{{ item.item_name }}</strong></td>
+                                <td>{{ item.specification or '-' }}</td>
+                                <td>{{ item.unit or '개' }}</td>
+                                <td>{{ item.min_stock }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustStock({{ item.id }}, -1)" title="1 감소">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                        <span class="fw-bold" id="stock-{{ item.id }}">{{ item.current_stock }}</span>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustStock({{ item.id }}, 1)" title="1 증가">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="fw-bold {% if item.shortage_quantity and item.shortage_quantity > 0 %}text-danger{% endif %}" id="shortage-{{ item.id }}">
+                                        {{ item.shortage_quantity or (item.min_stock - item.current_stock if item.current_stock < item.min_stock else 0) }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold" id="reorder-{{ item.id }}">{{ item.reorder_quantity or 0 }}</span>
+                                        <button class="btn btn-sm btn-outline-info" onclick="editReorderQuantity({{ item.id }}, '{{ item.item_name }}', {{ item.reorder_quantity or 0 }})" title="발주권장수량 수정">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if item.status %}
+                                        {% if item.status == '부족' or item.current_stock <= item.min_stock %}
+                                            <span class="badge badge-low rounded-pill">부족</span>
+                                        {% else %}
+                                            <span class="badge badge-normal rounded-pill">정상</span>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if item.current_stock <= item.min_stock %}
+                                            <span class="badge badge-low rounded-pill">부족</span>
+                                        {% else %}
+                                            <span class="badge badge-normal rounded-pill">정상</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#updateModal{{ item.id }}">
+                                        <i class="bi bi-pencil"></i> 수정
+                                    </button>
+                                    
+                                    <!-- 수정 모달 -->
+                                    <div class="modal fade" id="updateModal{{ item.id }}" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">재고 수정</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <form method="POST" action="/update/{{ item.id }}">
+                                                    <div class="modal-body">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">품목명</label>
+                                                            <input type="text" class="form-control" value="{{ item.item_name }}" disabled>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">현재 재고</label>
+                                                            <input type="number" class="form-control" name="new_stock" id="modal-stock-{{ item.id }}" value="{{ item.current_stock }}" required>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                                                        <button type="submit" class="btn btn-primary">저장</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if item.supplier_email %}
+                                        <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#orderModal{{ item.id }}">
+                                            <i class="bi bi-cart-plus"></i> 발주
+                                        </button>
+                                        
+                                        <!-- 발주 모달 -->
+                                        <div class="modal fade" id="orderModal{{ item.id }}" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">발주 요청</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">품목명</label>
+                                                            <input type="text" class="form-control" value="{{ item.item_name }}" disabled>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">현재 재고</label>
+                                                            <input type="text" class="form-control" value="{{ item.current_stock }}" disabled>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">발수 주량</label>
+                                                            <input type="text" class="form-control" value="{{ item.reorder_quantity or 0 }}" disabled>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">발주 수량 <span class="text-danger">*</span></label>
+                                                            <input type="number" class="form-control" id="order-quantity-{{ item.id }}" min="1" value="{{ item.reorder_quantity or 1 }}" required>
+                                                            <small class="form-text text-muted">발주할 수량을 입력하세요.</small>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">공급업체</label>
+                                                            <input type="text" class="form-control" value="{{ item.supplier_name or item.supplier_email }}" disabled>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                                                        <button type="button" class="btn btn-success" onclick="placeOrder({{ item.id }}, '{{ item.item_name }}')">
+                                                            <i class="bi bi-send"></i> 발주 요청
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.supplier_email %}
+                                        <button type="button" class="btn btn-sm btn-warning" onclick="sendNotificationEmail({{ item.id }}, '{{ item.item_name }}', '{{ item.supplier_email }}', '{{ item.notification_message or "" }}')" title="이메일 발송">
+                                            <i class="bi bi-envelope"></i> 이메일 발송
+                                        </button>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST" action="/delete/{{ item.id }}" onsubmit="return confirm('정말 삭제하시겠습니까?');">
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash"></i> 삭제
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="text-muted mt-3">등록된 재고가 없습니다.</p>
+                    <a href="/add" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 재고 추가하기
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function adjustStock(itemId, adjustment) {
+    fetch(`/adjust/${itemId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ adjustment: adjustment })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 재고 수량 업데이트
+            const stockElement = document.getElementById(`stock-${itemId}`);
+            if (stockElement) {
+                stockElement.textContent = data.new_stock;
+                
+                // 모달의 재고 입력값도 업데이트
+                const modalStockInput = document.getElementById(`modal-stock-${itemId}`);
+                if (modalStockInput) {
+                    modalStockInput.value = data.new_stock;
+                }
+                
+                // 부족수량 및 상태 업데이트
+                const row = stockElement.closest('tr');
+                const minStock = parseInt(row.querySelector('td:nth-child(4)').textContent); // 안전재고 컬럼
+                const shortage = Math.max(0, minStock - data.new_stock);
+                
+                // 부족수량 업데이트
+                const shortageElement = document.getElementById(`shortage-${itemId}`);
+                if (shortageElement) {
+                    shortageElement.textContent = shortage;
+                    if (shortage > 0) {
+                        shortageElement.className = 'fw-bold text-danger';
+                    } else {
+                        shortageElement.className = 'fw-bold';
+                    }
+                }
+                
+                // 상태 배지 업데이트
+                const statusBadge = row.querySelector('.badge');
+                
+                if (data.new_stock <= minStock) {
+                    statusBadge.className = 'badge badge-low rounded-pill';
+                    statusBadge.textContent = '부족';
+                } else {
+                    statusBadge.className = 'badge badge-normal rounded-pill';
+                    statusBadge.textContent = '정상';
+                }
+            }
+            
+            // 메시지 표시
+            if (data.email_sent) {
+                showAlert('warning', data.message);
+            } else {
+                showAlert('success', data.message);
+            }
+            
+            // 페이지 새로고침 (발주서 전송 시)
+            if (data.email_sent) {
+                setTimeout(() => location.reload(), 1500);
+            }
+        } else {
+            showAlert('danger', data.message || '오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', '재고 조정 중 오류가 발생했습니다.');
+    });
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // 3초 후 자동 제거
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+
+function handleQuickAdd(event) {
+    // 폼 제출은 정상적으로 진행되지만, 성공 시 폼 초기화는 서버에서 리다이렉트 후 처리
+    return true;
+}
+
+function editReorderQuantity(itemId, itemName, currentValue) {
+    const newValue = prompt(`${itemName}의 발수 주량을 입력하세요:`, currentValue);
+    if (newValue === null) return; // 취소
+    
+    const reorderQuantity = parseInt(newValue);
+    if (isNaN(reorderQuantity) || reorderQuantity < 0) {
+        showAlert('danger', '올바른 숫자를 입력해주세요.');
+        return;
+    }
+    
+    fetch(`/update_reorder/${itemId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reorder_quantity: reorderQuantity })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 발수 주량 업데이트
+            const reorderElement = document.getElementById(`reorder-${itemId}`);
+            if (reorderElement) {
+                reorderElement.textContent = reorderQuantity;
+            }
+            showAlert('success', data.message);
+        } else {
+            showAlert('danger', data.message || '오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', '발수 주량 업데이트 중 오류가 발생했습니다.');
+    });
+}
+
+function importFromExcel() {
+    if (!confirm('엑셀 파일(sup/domino_inventory_training.xlsx)에서 데이터를 가져오시겠습니까?\n기존 항목은 발수 주량만 업데이트되고, 새 항목은 추가됩니다.')) {
+        return;
+    }
+    
+    fetch('/import_excel', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert('danger', data.message || '오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', '엑셀 파일 가져오기 중 오류가 발생했습니다.');
+    });
+}
+
+function placeOrder(itemId, itemName) {
+    const quantityInput = document.getElementById(`order-quantity-${itemId}`);
+    const orderQuantity = parseInt(quantityInput.value);
+    
+    if (!orderQuantity || orderQuantity <= 0) {
+        alert('발주 수량을 입력해주세요.');
+        return;
+    }
+    
+    if (!confirm(`${itemName} ${orderQuantity}개를 발주하시겠습니까?`)) {
+        return;
+    }
+    
+    fetch(`/place_order/${itemId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ order_quantity: orderQuantity })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            // 모달 닫기
+            const modal = bootstrap.Modal.getInstance(document.getElementById(`orderModal${itemId}`));
+            if (modal) {
+                modal.hide();
+            }
+            // 페이지 새로고침
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert(data.message || '오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('발주 처리 중 오류가 발생했습니다.');
+    });
+}
+
+function sendNotificationEmail(itemId, itemName, supplierEmail, notificationMessage) {
+    if (!supplierEmail) {
+        alert('거래처이메일이 설정되지 않았습니다.');
+        return;
+    }
+    
+    if (!notificationMessage || notificationMessage.trim() === '') {
+        if (!confirm(`${itemName}의 담당자알림메시지가 없습니다.\n기본 메시지로 발송하시겠습니까?`)) {
+            return;
+        }
+        notificationMessage = `${itemName} 재고 관리 알림`;
+    }
+    
+    if (!confirm(`${itemName}\n거래처이메일: ${supplierEmail}\n\n이메일을 발송하시겠습니까?`)) {
+        return;
+    }
+    
+    fetch(`/send_notification_email/${itemId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            supplier_email: supplierEmail,
+            notification_message: notificationMessage
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('이메일 발송 성공!\n' + data.message);
+        } else {
+            alert('이메일 발송 실패!\n' + (data.message || '오류가 발생했습니다.'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('이메일 발송 중 오류가 발생했습니다.');
+    });
+}
+
+// 빠른 추가 폼 제출 후 폼 초기화 (페이지 로드 시)
+document.addEventListener('DOMContentLoaded', function() {
+    const quickAddForm = document.getElementById('quickAddForm');
+    if (quickAddForm) {
+        // URL에 success 파라미터가 있으면 폼 초기화
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('added') === 'true') {
+            quickAddForm.reset();
+            // URL에서 파라미터 제거
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+});
+</script>
+{% endblock %}

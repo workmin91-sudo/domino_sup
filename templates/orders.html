@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}발주 내역 - 재고 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-receipt"></i> 발주 내역</h4>
+            </div>
+            <div class="card-body">
+                {% if orders %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>발주일시</th>
+                                <th>품목명</th>
+                                <th>발주 수량</th>
+                                <th>이메일 발송</th>
+                                <th>발송일시</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in orders %}
+                            <tr>
+                                <td>{{ order.order_date }}</td>
+                                <td><strong>{{ order.item_name }}</strong></td>
+                                <td>{{ order.order_quantity }}</td>
+                                <td>
+                                    {% if order.email_sent %}
+                                        <span class="badge badge-normal">
+                                            <i class="bi bi-check-circle"></i> 발송완료
+                                        </span>
+                                    {% else %}
+                                        <span class="badge badge-low">
+                                            <i class="bi bi-x-circle"></i> 미발송
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if order.email_sent_at %}
+                                        {{ order.email_sent_at }}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="text-muted mt-3">발주 내역이 없습니다.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

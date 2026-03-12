@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}엑셀 업로드 - 재고 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-upload"></i> 엑셀 파일 업로드</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h5><i class="bi bi-info-circle"></i> 엑셀 파일 형식 안내</h5>
+                    <p>엑셀 파일은 다음 컬럼을 포함해야 합니다:</p>
+                    <ul>
+                        <li><strong>품목명</strong> (필수)</li>
+                        <li><strong>현재재고</strong> (필수)</li>
+                        <li><strong>최소재고</strong> (필수)</li>
+                        <li><strong>단위</strong> (선택, 기본값: 개)</li>
+                        <li><strong>공급업체명</strong> (선택)</li>
+                        <li><strong>공급업체이메일</strong> (선택)</li>
+                    </ul>
+                    <p class="mb-0">
+                        <a href="/download" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-download"></i> 샘플 파일 다운로드
+                        </a>
+                    </p>
+                </div>
+                
+                <form method="POST" action="/upload" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">엑셀 파일 선택</label>
+                        <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="/" class="btn btn-secondary">취소</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> 업로드
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
